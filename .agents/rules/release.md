@@ -23,14 +23,14 @@ description: 发版、发布新版本、版本号、Git 提交、打标、打包
      - 最高递增至 `0.0.99`，即末尾修订号最大为 `99`。达到 99 后保持，提醒用户处理。
 
 3. **版本修改位置**
-   - 主工程 `PinToDesk.csproj` 中的 `<Version>`（同步 `<AssemblyVersion>` 与 `<FileVersion>`）。
+   - 主工程 `PinToDesk_edit.csproj` 中的 `<Version>`（同步 `<AssemblyVersion>` 与 `<FileVersion>`）。
 
 ## 二、构建与交付铁律
 
 1. **编译前终结原有程序**
    - 重新编译前，必须首先强制终结正在运行的原程序进程：
      ```powershell
-     Stop-Process -Name "PinToDesk" -Force -ErrorAction SilentlyContinue
+     Stop-Process -Name "PinToDesk_edit" -Force -ErrorAction SilentlyContinue
      ```
    - 彻底释放文件占用与互斥锁，确保新二进制无阻碍覆盖。
 
@@ -41,7 +41,7 @@ description: 发版、发布新版本、版本号、Git 提交、打标、打包
    - 构建达到 0 警告 0 错误即可完成交付。
 
 3. **构建门禁**
-   - 执行 `dotnet build PinToDesk.csproj -c Release`，必须 **0 警告 0 错误**。
+   - 执行 `dotnet build PinToDesk_edit.csproj -c Release`，必须 **0 警告 0 错误**。
 
 4. **打包产物隔离**
    - `Publish/` 目录与 `*.zip` 发布包必须被 `.gitignore` 忽略。
@@ -81,13 +81,13 @@ description: 发版、发布新版本、版本号、Git 提交、打标、打包
 ```
 
 1. **步骤 1：版本确定**
-   - 在 `PinToDesk.csproj` 中修改 `<Version>` 为目标版本。
+   - 在 `PinToDesk_edit.csproj` 中修改 `<Version>` 为目标版本。
    - 正式发布示例：`<Version>2.0</Version>`；内部调试示例：`<Version>2.0.1</Version>`。
 
 2. **步骤 2：本地构建与验证**
    - 执行：
      ```powershell
-     dotnet build PinToDesk.csproj -c Release
+     dotnet build PinToDesk_edit.csproj -c Release
      ```
    - 确保 **0 警告 0 错误**。
 
@@ -99,17 +99,17 @@ description: 发版、发布新版本、版本号、Git 提交、打标、打包
      - **正式发布打包（双版本 + ZIP 归档）**：
        ```powershell
        # 1. 检查并清理旧进程与历史产物
-       Stop-Process -Name "PinToDesk" -Force -ErrorAction SilentlyContinue
+       Stop-Process -Name "PinToDesk_edit" -Force -ErrorAction SilentlyContinue
        $publishBase = "Publish"
        $fdOut = "$publishBase\FrameworkDependent_V<Version>"
        $scOut = "$publishBase\SelfContained_V<Version>"
-       $fdZip = "$publishBase\PinToDesk-v<Version>-FrameworkDependent.zip"
-       $scZip = "$publishBase\PinToDesk-v<Version>-SelfContained.zip"
+       $fdZip = "$publishBase\PinToDesk_edit-v<Version>-FrameworkDependent.zip"
+       $scZip = "$publishBase\PinToDesk_edit-v<Version>-SelfContained.zip"
        Remove-Item $fdOut, $scOut, $fdZip, $scZip -Recurse -Force -ErrorAction SilentlyContinue
 
        # 2. 编译发布：框架依赖版与独立免装版
-       dotnet publish PinToDesk.csproj -c Release -r win-x64 --self-contained false -o $fdOut
-       dotnet publish PinToDesk.csproj -c Release -r win-x64 --self-contained true -o $scOut
+       dotnet publish PinToDesk_edit.csproj -c Release -r win-x64 --self-contained false -o $fdOut
+       dotnet publish PinToDesk_edit.csproj -c Release -r win-x64 --self-contained true -o $scOut
 
        # 3. 自动归档压缩为标准 ZIP 发布包
        Compress-Archive -Path "$fdOut\*" -DestinationPath $fdZip -Force
@@ -118,13 +118,13 @@ description: 发版、发布新版本、版本号、Git 提交、打标、打包
      - **内部调试打包（仅独立免装版，不生成 ZIP）**：
        ```powershell
        # 1. 检查并清理旧进程与历史产物
-       Stop-Process -Name "PinToDesk" -Force -ErrorAction SilentlyContinue
+       Stop-Process -Name "PinToDesk_edit" -Force -ErrorAction SilentlyContinue
        $publishBase = "Publish"
        $scOut = "$publishBase\SelfContained_V<Version>"
        Remove-Item $scOut -Recurse -Force -ErrorAction SilentlyContinue
 
        # 2. 仅发布独立免装版目录（即解即用，不生成 ZIP 压缩包）
-       dotnet publish PinToDesk.csproj -c Release -r win-x64 --self-contained true -o $scOut
+       dotnet publish PinToDesk_edit.csproj -c Release -r win-x64 --self-contained true -o $scOut
        ```
 
 4. **步骤 4：Git 提交与打标**
@@ -161,7 +161,7 @@ description: 发版、发布新版本、版本号、Git 提交、打标、打包
 3. **步骤 3：发布**
    - 调用 GitHub CLI 发布（精确指定本次版本的两个 ZIP 资产，避免误传历史旧包）：
      ```powershell
-     gh release create v<Version> "Publish\PinToDesk-v<Version>-FrameworkDependent.zip" "Publish\PinToDesk-v<Version>-SelfContained.zip" --title "PinToDesk v<Version>" --notes-file "<更新说明路径>"
+     gh release create v<Version> "Publish\PinToDesk_edit-v<Version>-FrameworkDependent.zip" "Publish\PinToDesk_edit-v<Version>-SelfContained.zip" --title "PinToDesk_edit v<Version>" --notes-file "<更新说明路径>"
      ```
    - 发布成功后，向用户汇报：
      - GitHub Release 链接

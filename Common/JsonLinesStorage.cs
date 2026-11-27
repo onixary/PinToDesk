@@ -116,7 +116,7 @@ namespace PinToDesk.Common
             {
                 System.Windows.MessageBox.Show(
                     $"数据文件 ({fileName}) 读取遇到异常（{reason}），已开启保护模式：本次会话不会自动保存覆盖，请检查文件并适时重启软件。",
-                    "PinToDesk 数据保护",
+                    "PinToDesk_edit 数据保护",
                     System.Windows.MessageBoxButton.OK,
                     System.Windows.MessageBoxImage.Warning);
             }));
@@ -193,19 +193,7 @@ namespace PinToDesk.Common
                     try
                     {
                         await Task.Delay(debounceMs, token).ConfigureAwait(false);
-                        List<T>? toWrite;
-                        lock (_queueLock)
-                        {
-                            // 在锁内先检查取消与释放状态，避免旧防抖任务偷走新入队的 _pendingItems
-                            if (token.IsCancellationRequested || _isDisposed) return;
-                            toWrite = _pendingItems;
-                            _pendingItems = null;
-                        }
-
-                        if (toWrite != null)
-                        {
-                            Save(toWrite);
-                        }
+                        WritePending(token);
                     }
                     catch (OperationCanceledException)
                     {
@@ -224,17 +212,30 @@ namespace PinToDesk.Common
         /// </summary>
         public void Flush()
         {
-            List<T>? toWrite = null;
-            lock (_queueLock)
-            {
-                _debounceCts?.Cancel();
-                toWrite = _pendingItems;
-                _pendingItems = null;
-            }
+            WritePending(CancellationToken.None);
+        }
 
-            if (toWrite != null)
+        // Serialize claiming and writing: a tab switch must not read ahead of an in-flight save.
+        private void WritePending(CancellationToken token)
+        {
+            lock (_fileLock)
             {
-                Save(toWrite);
+                List<T>? snapshot;
+                lock (_queueLock)
+                {
+                    if (token.IsCancellationRequested || _isDisposed) return;
+                    snapshot = _pendingItems;
+                    _pendingItems = null;
+                }
+                if (snapshot != null)
+                {
+                    try { Save(snapshot); }
+                    catch
+                    {
+                        lock (_queueLock) _pendingItems ??= snapshot;
+                        throw;
+                    }
+                }
             }
         }
 

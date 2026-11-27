@@ -10,6 +10,9 @@ namespace PinToDesk.Models
         /// <summary>原始待办的唯一标识（恢复时保持不变）</summary>
         public Guid Id { get; set; } = Guid.NewGuid();
 
+        public Guid GroupId { get; set; }
+        public TodoColor Color { get; set; }
+
         /// <summary>待办文本内容</summary>
         public string Title { get; set; } = string.Empty;
 

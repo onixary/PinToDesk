@@ -1,0 +1,24 @@
+<Window x:Class="PinToDesk.DeleteGroupDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="删除标签" Width="260" SizeToContent="Height"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        ResizeMode="NoResize" ShowInTaskbar="False" WindowStartupLocation="CenterOwner"
+        FocusManager.FocusedElement="{Binding ElementName=CancelButton}">
+    <Border Style="{StaticResource FluentWindowBorder}">
+        <StackPanel Margin="14,12">
+            <TextBlock x:Name="Heading" TextWrapping="Wrap" FontSize="13" FontWeight="SemiBold"
+                       Foreground="{DynamicResource ThemeTextPrimaryBrush}"
+                       MouseLeftButtonDown="Title_MouseLeftButtonDown"/>
+            <TextBlock x:Name="Description" Margin="0,8,0,16" TextWrapping="Wrap"
+                       FontSize="12" LineHeight="18" Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="CancelButton" Content="取消" Width="62" Height="28"
+                        Style="{StaticResource FluentSecondaryButton}" IsCancel="True" IsDefault="True"
+                        Focusable="True" IsTabStop="True" Click="Cancel_Click"/>
+                <Button Content="删除" Width="62" Margin="8,0,0,0"
+                        Style="{StaticResource FluentPrimaryButton}" Click="Delete_Click"/>
+            </StackPanel>
+        </StackPanel>
+    </Border>
+</Window>

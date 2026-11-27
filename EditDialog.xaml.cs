@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Input;
 using PinToDesk.Common;
+using PinToDesk.Models;
 using PinToDesk.Services;
 using WinKey   = System.Windows.Input.KeyEventArgs;
 using WinInput = System.Windows.Input;
@@ -13,6 +14,9 @@ namespace PinToDesk
     public partial class EditDialog : Window
     {
         public string ResultText { get; private set; } = string.Empty;
+        public bool DeleteRequested { get; private set; }
+        internal TodoColor SelectedColor => ColorBar.SelectedValue is TodoColor color ? color : TodoColor.None;
+        internal event Action<TodoColor>? ColorPreviewChanged;
         private bool _isUpdatingText = false;
         private bool _isFinished = false;
 
@@ -32,6 +36,8 @@ namespace PinToDesk
                 DlgTitleText.Text = title;
             }
             this.Title = title;
+            ColorBar.ItemsSource = TodoPalette.Options;
+            ColorBar.SelectedValue = TodoColor.None;
             InputBox.Text = initialText;
             InputBox.SelectAll();
             InputBox.Focus();
@@ -40,6 +46,16 @@ namespace PinToDesk
             Loaded += (s, e) => InstallMouseHook();
             Closed += (s, e) => UninstallMouseHook();
         }
+
+        internal EditDialog(TodoItem item) : this("编辑待办", item.Title)
+        {
+            DeleteButton.Visibility = Visibility.Visible;
+            ConfirmButton.Content = "保存修改";
+            ColorBar.SelectedValue = item.Color;
+        }
+
+        private void ColorBar_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e) =>
+            ColorPreviewChanged?.Invoke(SelectedColor);
 
         private void InstallMouseHook()
         {
@@ -92,7 +108,7 @@ namespace PinToDesk
                     _lastClickTime = DateTime.MinValue;
                     Dispatcher.BeginInvoke(new Action(() =>
                     {
-                        if (IsPointInInputBox(clickPt)) return;
+                        if (_isFinished || IsPointInside(InputBox, clickPt) || IsPointInside(DialogActions, clickPt)) return;
                         DiagnosticLogger.RecordStep("Todo.EditDialog", "双击非输入框区域保存并关闭");
                         CommitAndClose();
                     }));
@@ -107,37 +123,32 @@ namespace PinToDesk
             return NativeMethods.CallNextHookEx(_mouseHookHandle, nCode, wParam, lParam);
         }
 
+        private void Confirm_Click(object sender, RoutedEventArgs e) => CommitAndClose();
+        private void Cancel_Click(object sender, RoutedEventArgs e) => CancelAndClose();
+
         private void CommitAndClose()
         {
             if (_isFinished) return;
-            _isFinished = true;
-            UninstallMouseHook();
-
             ResultText = InputBox.Text.Trim();
-            try
-            {
-                DialogResult = true;
-            }
-            catch
-            {
-                Close();
-            }
+            Finish(true);
         }
 
-        private void CancelAndClose()
+        private void Delete_Click(object sender, RoutedEventArgs e)
+        {
+            if (_isFinished) return;
+            DeleteRequested = true;
+            Finish(true);
+        }
+
+        private void CancelAndClose() => Finish(false);
+
+        private void Finish(bool accepted)
         {
             if (_isFinished) return;
             _isFinished = true;
             UninstallMouseHook();
-
-            try
-            {
-                DialogResult = false;
-            }
-            catch
-            {
-                Close();
-            }
+            try { DialogResult = accepted; }
+            catch (InvalidOperationException) { Close(); }
         }
 
         // 标题栏拖动（单击才拖，双击交由全局处理保存）
@@ -183,30 +194,22 @@ namespace PinToDesk
         {
             if (e.ClickCount >= 2)
             {
-                if (InputBox != null)
-                {
-                    var pos = e.GetPosition(InputBox);
-                    if (pos.X >= 0 && pos.X <= InputBox.ActualWidth &&
-                        pos.Y >= 0 && pos.Y <= InputBox.ActualHeight)
-                    {
-                        return;
-                    }
-                }
+                if (InputBox.IsMouseOver || DialogActions.IsMouseOver) return;
                 DiagnosticLogger.RecordStep("Todo.EditDialog", "窗口内非输入框区域双击保存并关闭");
                 CommitAndClose();
                 e.Handled = true;
             }
         }
 
-        private bool IsPointInInputBox(NativeMethods.POINT screenPt)
+        private static bool IsPointInside(FrameworkElement element, NativeMethods.POINT screenPt)
         {
-            if (InputBox == null || !InputBox.IsVisible || InputBox.ActualWidth <= 0 || InputBox.ActualHeight <= 0)
+            if (element == null || !element.IsVisible || element.ActualWidth <= 0 || element.ActualHeight <= 0)
                 return false;
             try
             {
-                var rel = InputBox.PointFromScreen(new System.Windows.Point(screenPt.X, screenPt.Y));
-                return rel.X >= 0 && rel.X <= InputBox.ActualWidth &&
-                       rel.Y >= 0 && rel.Y <= InputBox.ActualHeight;
+                var rel = element.PointFromScreen(new System.Windows.Point(screenPt.X, screenPt.Y));
+                return rel.X >= 0 && rel.X <= element.ActualWidth &&
+                       rel.Y >= 0 && rel.Y <= element.ActualHeight;
             }
             catch
             {

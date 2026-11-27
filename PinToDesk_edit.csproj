@@ -3,20 +3,21 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
-    <AssemblyName>PinToDesk</AssemblyName>
+    <AssemblyName>PinToDesk_edit</AssemblyName>
     <RootNamespace>PinToDesk</RootNamespace>
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationIcon>PTD.ico</ApplicationIcon>
-    <Version>2.0</Version>
-    <AssemblyVersion>2.0.0.0</AssemblyVersion>
-    <FileVersion>2.0.0.0</FileVersion>
+    <Version>2.1</Version>
+    <AssemblyVersion>2.1.0.0</AssemblyVersion>
+    <FileVersion>2.1.0.0</FileVersion>
     <DefineConstants>$(DefineConstants);PTD_DIAG</DefineConstants>
-    <Authors>li5bo5</Authors>
-    <Company>li5bo5</Company>
-    <Product>PinToDesk</Product>
+    <Authors>li5bo5;onixary</Authors>
+    <Company>onixary</Company>
+    <Product>PinToDesk_edit</Product>
+    <RepositoryUrl>https://github.com/onixary/PinToDesk</RepositoryUrl>
     <Description>Windows 桌面轻量待办事项工具</Description>
     <FileDescription>Windows 桌面轻量待办事项工具</FileDescription>
 
@@ -30,6 +31,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <None Update="LICENSE;README.md" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true"/>
     <EmbeddedResource Include="PTD.ico"/>
   </ItemGroup>
 

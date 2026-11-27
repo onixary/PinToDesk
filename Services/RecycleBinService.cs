@@ -51,21 +51,17 @@ namespace PinToDesk.Services
         /// <summary>
         /// 将待办事项移入回收站（完整保留原始 ID 与创建时间，合并过期清理与新增为单次落盘）
         /// </summary>
-        public void AddToRecycleBin(TodoItem todo)
+        public void AddRange(IReadOnlyList<TodoItem> todos, Guid groupId)
         {
-            if (todo == null || string.IsNullOrWhiteSpace(todo.Title)) return;
-
-            var currentItems = LoadItemsInternal(saveIfExpired: false);
-            var recycleItem = new RecycleBinItem
+            if (todos.Count == 0) return;
+            var current = LoadItemsInternal(saveIfExpired: false);
+            if (_storage.HasReadFault) throw new System.IO.IOException("待办历史无法读取，已保留原待办。");
+            var ids = todos.Select(t => t.Id).ToHashSet();
+            var deleted = DateTime.Now;
+            _storage.Save(todos.Select(t => new RecycleBinItem
             {
-                Id = todo.Id,
-                Title = todo.Title,
-                CreatedAt = todo.CreatedAt,
-                DeletedAt = DateTime.Now
-            };
-
-            currentItems.Insert(0, recycleItem);
-            _storage.Save(currentItems);
+                Id = t.Id, Title = t.Title, Color = t.Color, CreatedAt = t.CreatedAt, GroupId = groupId, DeletedAt = deleted
+            }).Concat(current.Where(i => !ids.Contains(i.Id))));
             ItemsChanged?.Invoke(this, EventArgs.Empty);
         }
 

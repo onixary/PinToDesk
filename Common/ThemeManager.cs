@@ -225,6 +225,11 @@ namespace PinToDesk.Common
 
             // 列表项悬停与选中
             res["ThemeItemHoverBrush"]         = CreateFrozenBrush(isDark ? Color.FromArgb(30, 255, 255, 255) : Color.FromArgb(20, 0, 0, 0));
+            res["ThemeSwatchShadeBrush"]       = CreateFrozenBrush(Color.FromArgb(isDark ? (byte)0 : (byte)24, 0, 0, 0));
+            foreach (var swatch in TodoPalette.Options)
+            {
+                res[swatch.Value] = CreateFrozenBrush((Color)System.Windows.Media.ColorConverter.ConvertFromString(isDark ? swatch.Dark : swatch.Light));
+            }
             res["ThemeItemSelectedBrush"]      = CreateFrozenBrush(isDark ? Color.FromArgb(46, 255, 255, 255) : Color.FromArgb(26, 0, 0, 0));
 
             // 输入框背景与边框
@@ -245,8 +250,8 @@ namespace PinToDesk.Common
             // 滚动条滑块
             res["ThemeScrollBarThumbBrush"]    = CreateFrozenBrush(isDark ? Color.FromArgb(77, 255, 255, 255) : Color.FromArgb(77, 0, 0, 0));
 
-            // 窗口置顶顶部微光线条画刷 (Topmost Accent Line)
-            res["ThemeTopmostAccentLineBrush"] = CreateFrozenBrush(isDark ? Color.FromArgb(220, 96, 165, 250) : Color.FromArgb(200, 37, 99, 235));
+            // 当前标签强调色
+            res["ThemeTabAccentBrush"] = CreateFrozenBrush(isDark ? Color.FromArgb(220, 96, 165, 250) : Color.FromArgb(200, 37, 99, 235));
         }
     }
 }

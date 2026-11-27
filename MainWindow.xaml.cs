@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Runtime.InteropServices;
-using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -16,7 +15,6 @@ using PinToDesk.Models;
 using PinToDesk.Services;
 using WinPoint  = System.Windows.Point;
 using WinMouse  = System.Windows.Input.MouseEventArgs;
-using WinButton = System.Windows.Controls.Button;
 using WinPanel  = System.Windows.Controls.Panel;
 
 namespace PinToDesk
@@ -24,7 +22,9 @@ namespace PinToDesk
     public partial class MainWindow : Window
     {
         private readonly ObservableCollection<TodoItem> _items = new();
-        private readonly TodoService _todoService;
+        private readonly TodoGroups _groups;
+        private TodoGroup _currentGroup;
+        private TodoService _todoService => _groups.Store(_currentGroup);
         private readonly RecycleBinService _recycleBinService;
         private readonly SettingsManager _settingsManager;
 
@@ -45,10 +45,6 @@ namespace PinToDesk
         private DispatcherTimer? _autoScrollTimer;
         private double _autoScrollVelocity = 0;
         private readonly List<(double Top, double Height)> _itemInitialBounds = new();
-
-        // 置顶 / 穿透（严格联动状态）
-        private bool _isPinned      = false;
-        private bool _isPassThrough = false;
 
         // 托盘引用（用于任务栏重建时恢复托盘图标）
         private TrayHelper? _tray;
@@ -79,27 +75,11 @@ namespace PinToDesk
             _isExplicitlyHiding = true;
             try
             {
-                StopPassThroughMonitor();
                 Hide();
             }
             finally
             {
                 _isExplicitlyHiding = false;
-            }
-        }
-
-        private void MainWindow_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
-        {
-            if ((bool)e.NewValue)
-            {
-                if (_isPassThrough)
-                {
-                    StartPassThroughMonitor();
-                }
-            }
-            else
-            {
-                StopPassThroughMonitor();
             }
         }
 
@@ -111,19 +91,20 @@ namespace PinToDesk
             InitializeComponent();
             _settingsManager = settingsManager;
 
-            // 监听窗口可见性切换以启停穿透监听器
-            IsVisibleChanged += MainWindow_IsVisibleChanged;
-
             // 确保窗口句柄创建并立即挂钩 WndProc，确保 Win+D 等底层拦截从第一毫秒起生效
             var hwnd = new WindowInteropHelper(this).EnsureHandle();
             var hwndSource = HwndSource.FromHwnd(hwnd);
             hwndSource?.AddHook(WndProc);
 
-            _todoService = new TodoService();
+            _groups = new TodoGroups();
+            _currentGroup = _groups.Tabs.FirstOrDefault(g => g.Id == settingsManager.Settings.SelectedGroupId) ?? _groups.Tabs[0];
             _recycleBinService = new RecycleBinService(_settingsManager);
             foreach (var item in _todoService.LoadTodos())
                 _items.Add(item);
             TodoList.ItemsSource = _items;
+            GroupTabs.ItemsSource = _groups.Tabs;
+            GroupTabs.SelectedItem = _currentGroup;
+            NewGroupButton.IsEnabled = _groups.CanEdit;
 
             // 监听集合变化，同步空列表占位符
             _items.CollectionChanged += (s, e) => UpdateEmptyPlaceholder();
@@ -149,26 +130,6 @@ namespace PinToDesk
             // 初始化或恢复保存的窗口位置与大小
             ApplyInitialOrSavedBounds();
 
-            // 载入并应用保存的设置
-            LoadSettings();
-
-            // 监听统一偏好设置变更广播（先同步置顶再同步穿透，确保“穿透必置顶”不被反向撤销）
-            _settingsManager.SettingsChanged += (s, settings) =>
-            {
-                Dispatcher.Invoke(() =>
-                {
-                    bool effectivePinned = settings.TodoIsPinned || settings.TodoIsPassThrough;
-                    if (_isPinned != effectivePinned)
-                    {
-                        SetPinned(effectivePinned);
-                    }
-                    if (_isPassThrough != settings.TodoIsPassThrough)
-                    {
-                        ApplyPassThroughState(settings.TodoIsPassThrough);
-                    }
-                });
-            };
-
             // 统一挂载右下角拖拽缩放与落盘保存
             NativeMethods.AttachResizeGrip(this, ResizeGripArea, SaveWindowBounds);
 
@@ -178,6 +139,7 @@ namespace PinToDesk
             // 初始状态下标题栏按钮保持隐藏（仅悬停时浮现）
             Loaded += (s, e) =>
             {
+                PlaceOnDesktop();
                 UpdateEmptyPlaceholder();
                 SetTitleButtonsOpacity(0);
             };
@@ -217,30 +179,22 @@ namespace PinToDesk
                 return IntPtr.Zero;
             }
 
-            // B. 拦截非显式主动调用的隐藏指令 (Win+D 发送的 WM_SHOWWINDOW 消息)
-            if (msg == WM_SHOWWINDOW && wParam == IntPtr.Zero)
+            if (msg == WM_WINDOWPOSCHANGING)
             {
-                if (!_isExplicitlyHiding)
+                var pos = Marshal.PtrToStructure<WINDOWPOS>(lParam);
+                if (!_isExplicitlyHiding && !App.IsExiting) pos.flags &= ~(uint)SWP_HIDEWINDOW;
+                if ((pos.flags & NativeMethods.SWP_NOZORDER) == 0)
                 {
-                    handled = true;
-                    EnsureWindowAboveDesktop();
-                    return IntPtr.Zero;
+                    // 主窗紧贴桌面图标宿主之上，不干预编辑弹窗、菜单的层级。
+                    var after = NativeMethods.GetDesktopInsertAfter(hwnd);
+                    if (after == hwnd) pos.flags |= NativeMethods.SWP_NOZORDER;
+                    else pos.hwndInsertAfter = after;
                 }
+                Marshal.StructureToPtr(pos, lParam, false);
             }
-
-            // C. 拦截通过 SetWindowPos 强制注入 SWP_HIDEWINDOW 的外部指令
-            if (msg == WM_WINDOWPOSCHANGING && !_isExplicitlyHiding)
+            if (msg == WM_SHOWWINDOW && wParam == IntPtr.Zero && !_isExplicitlyHiding && !App.IsExiting)
             {
-                try
-                {
-                    var pos = Marshal.PtrToStructure<WINDOWPOS>(lParam);
-                    if ((pos.flags & (uint)SWP_HIDEWINDOW) != 0)
-                    {
-                        pos.flags &= ~((uint)SWP_HIDEWINDOW);
-                        Marshal.StructureToPtr(pos, lParam, false);
-                    }
-                }
-                catch { }
+                Dispatcher.BeginInvoke(PlaceOnDesktop);
             }
 
             // 2. 任务栏重建自愈（Explorer 重启后恢复托盘图标并重绑桌面宿主）
@@ -248,38 +202,20 @@ namespace PinToDesk
             {
                 _tray?.EnsureVisible();
                 NativeMethods.BindOwnerToProgman(hwnd);
+                PlaceOnDesktop();
             }
             return IntPtr.Zero;
         }
 
-        private void EnsureWindowAboveDesktop()
+        private void PlaceOnDesktop()
         {
-            const uint flags = NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_SHOWWINDOW;
-            Action updatePos = () =>
-            {
-                var h = new WindowInteropHelper(this).Handle;
-                if (h != IntPtr.Zero && IsVisible)
-                {
-                    if (_isPinned)
-                    {
-                        NativeMethods.SetWindowPos(h, NativeMethods.HWND_TOPMOST, 0, 0, 0, 0, flags);
-                    }
-                    else
-                    {
-                        // 非置顶状态：先刷到 TOPMOST 再落回 NOTOPMOST，确保跃居刚提升的桌面之上但保持非置顶
-                        NativeMethods.SetWindowPos(h, NativeMethods.HWND_TOPMOST, 0, 0, 0, 0, flags);
-                        NativeMethods.SetWindowPos(h, NativeMethods.HWND_NOTOPMOST, 0, 0, 0, 0, flags);
-                    }
-                }
-            };
-
-            Dispatcher.BeginInvoke(DispatcherPriority.Render, updatePos);
-
-            // 50ms 延时再次确认，跨越 Windows Shell 显示桌面切换的动画滞后
-            Task.Delay(50).ContinueWith(_ =>
-            {
-                Dispatcher.BeginInvoke(DispatcherPriority.Render, updatePos);
-            });
+            if (!IsVisible) return;
+            var hwnd = new WindowInteropHelper(this).Handle;
+            var after = NativeMethods.GetDesktopInsertAfter(hwnd);
+            uint flags = NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE |
+                         NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_SHOWWINDOW;
+            if (after == hwnd) flags |= NativeMethods.SWP_NOZORDER;
+            NativeMethods.SetWindowPos(hwnd, after, 0, 0, 0, 0, flags);
         }
 
         // ══════════════════════════════════════════════
@@ -291,8 +227,6 @@ namespace PinToDesk
         private void SetTitleButtonsOpacity(double opacity)
         {
             if (AddBtn != null) AddBtn.Opacity                 = opacity;
-            if (PinBtn != null) PinBtn.Opacity                 = opacity;
-            if (PassThroughBtn != null) PassThroughBtn.Opacity = opacity;
             if (CloseBtn != null) CloseBtn.Opacity             = opacity;
         }
 
@@ -300,13 +234,6 @@ namespace PinToDesk
         {
             ShowCreateTodoDialog();
         }
-
-        // ResizeGrip 区域悬停：控制 Grip 显示
-        private void ResizeGrip_MouseEnter(object sender, WinMouse e)
-        {
-            if (!_isPinned) ResizeGripArea.Opacity = 1;
-        }
-        private void ResizeGrip_MouseLeave(object sender, WinMouse e) => ResizeGripArea.Opacity = 0;
 
         // ══════════════════════════════════════════════
         // 标题栏拖动（自由跟随 + 松手连通多屏回弹）
@@ -325,177 +252,6 @@ namespace PinToDesk
         // ══════════════════════════════════════════════
         private void CloseBtn_Click(object sender, RoutedEventArgs e) => SafeHide();
 
-        private void PinBtn_Click(object sender, RoutedEventArgs e)
-        {
-            TogglePinState();
-        }
-
-        public void SetPinned(bool pinned)
-        {
-            _isPinned = pinned;
-            this.Topmost = _isPinned;
-            UpdatePinButton();
-
-            // 置顶时同步禁用右下角缩放手柄命中测试，避免隐藏状态下仍可拖拽缩放
-            if (ResizeGripArea != null)
-            {
-                ResizeGripArea.IsHitTestVisible = !_isPinned;
-                if (_isPinned) ResizeGripArea.Opacity = 0;
-            }
-
-            // 若取消置顶，且当前正处于穿透模式，则必须强制联动退出穿透模式，严禁出现“非置顶 + 鼠标穿透”悬挂态
-            if (!_isPinned && _isPassThrough)
-            {
-                ApplyPassThroughState(false);
-            }
-        }
-
-        private void TogglePinState()
-        {
-            SetPinned(!_isPinned);
-            SaveSettings();
-        }
-
-        private void UpdatePinButton()
-        {
-            PinBtn.Content = "📌";
-            if (TopAccentLine != null)
-                TopAccentLine.Visibility = _isPinned ? Visibility.Visible : Visibility.Collapsed;
-        }
-
-        // ══════════════════════════════════════════════
-        // 鼠标穿透控制逻辑（标题栏热区自动临时解除穿透）
-        // ══════════════════════════════════════════════
-        private void PassThroughBtn_Click(object sender, RoutedEventArgs e)
-        {
-            TogglePassThroughState();
-        }
-
-        private void TogglePassThroughState()
-        {
-            _isPassThrough = !_isPassThrough;
-            ApplyPassThroughState(_isPassThrough);
-            SaveSettings();
-        }
-
-        private DispatcherTimer? _passThroughMonitorTimer;
-        private bool _isPassThroughHovered = false;
-
-        private void StartPassThroughMonitor()
-        {
-            if (_passThroughMonitorTimer == null)
-            {
-                _passThroughMonitorTimer = new DispatcherTimer(DispatcherPriority.Normal)
-                {
-                    Interval = TimeSpan.FromMilliseconds(40)
-                };
-                _passThroughMonitorTimer.Tick += PassThroughMonitorTimer_Tick;
-            }
-            _passThroughMonitorTimer.Start();
-        }
-
-        private void StopPassThroughMonitor()
-        {
-            _passThroughMonitorTimer?.Stop();
-            _isPassThroughHovered = false;
-        }
-
-        private void PassThroughMonitorTimer_Tick(object? sender, EventArgs e)
-        {
-            if (!_isPassThrough || !IsVisible || WindowState == WindowState.Minimized)
-            {
-                StopPassThroughMonitor();
-                return;
-            }
-
-            // 若当前有正在交互的弹窗或偏好设置窗口，保持控制按钮可点击状态，暂不恢复穿透
-            if (IsPreferencesWindowOpen || ActiveEditDialog != null)
-            {
-                return;
-            }
-
-            if (!NativeMethods.GetCursorPos(out var screenPoint)) return;
-
-            WinPoint relPos;
-            try
-            {
-                relPos = PointFromScreen(new WinPoint(screenPoint.X, screenPoint.Y));
-            }
-            catch
-            {
-                return;
-            }
-
-            // 顶部区域：涵盖 TitleBar 范围（高度 40px，向外宽容 4px 缓冲区以便顺滑移入）
-            double barHeight = TitleBar.ActualHeight > 0 ? TitleBar.ActualHeight : 40;
-            bool inTitleBarZone = (relPos.X >= 0 && relPos.X <= ActualWidth && relPos.Y >= 0 && relPos.Y <= barHeight + 4);
-
-            if (inTitleBarZone)
-            {
-                if (!_isPassThroughHovered)
-                {
-                    _isPassThroughHovered = true;
-                    SetTitleButtonsOpacity(1);
-                    SetWindowPassThrough(false);
-                }
-            }
-            else
-            {
-                if (_isPassThroughHovered)
-                {
-                    _isPassThroughHovered = false;
-                    SetTitleButtonsOpacity(0);
-                    SetWindowPassThrough(true);
-                }
-            }
-        }
-
-        private void SetWindowPassThrough(bool transparent)
-        {
-            var hwnd = new WindowInteropHelper(this).Handle;
-            if (hwnd == IntPtr.Zero) return;
-            int extendedStyle = NativeMethods.GetWindowLong(hwnd, NativeMethods.GWL_EXSTYLE);
-            if (transparent)
-            {
-                NativeMethods.SetWindowLong(hwnd, NativeMethods.GWL_EXSTYLE, extendedStyle | NativeMethods.WS_EX_TRANSPARENT);
-            }
-            else
-            {
-                NativeMethods.SetWindowLong(hwnd, NativeMethods.GWL_EXSTYLE, extendedStyle & ~NativeMethods.WS_EX_TRANSPARENT);
-            }
-        }
-
-        private void ApplyPassThroughState(bool isPassThrough)
-        {
-            _isPassThrough = isPassThrough;
-            PassThroughBtn.Content = _isPassThrough ? "◉" : "⊙";
-            if (_isPassThrough)
-            {
-                ResizeGripArea.Opacity = 0;
-                // 开启穿透模式时，强制置顶，防止穿透点击下层窗口时导致 TodoList 被覆盖
-                if (!_isPinned)
-                {
-                    SetPinned(true);
-                }
-            }
-
-            var hwnd = new WindowInteropHelper(this).Handle;
-            if (hwnd != IntPtr.Zero)
-            {
-                if (_isPassThrough)
-                {
-                    SetTitleButtonsOpacity(0);
-                    SetWindowPassThrough(true);
-                    StartPassThroughMonitor();
-                }
-                else
-                {
-                    StopPassThroughMonitor();
-                    SetWindowPassThrough(false);
-                }
-            }
-        }
-
         public bool IsPreferencesWindowOpen { get; set; } = false;
         public EditDialog? ActiveEditDialog { get; set; } = null;
 
@@ -513,7 +269,7 @@ namespace PinToDesk
             {
                 if (dlg.ShowDialog() == true && !string.IsNullOrWhiteSpace(dlg.ResultText))
                 {
-                    AddTodoItem(dlg.ResultText);
+                    AddTodoItem(dlg.ResultText, dlg.SelectedColor);
                     DiagnosticLogger.RecordStep("Todo", $"新建待办完成 (Len={dlg.ResultText.Length})");
                 }
             }
@@ -525,22 +281,24 @@ namespace PinToDesk
 
         private void TodoList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
         {
-            if (IsPreferencesWindowOpen) return;
+            if (IsPreferencesWindowOpen || e.ChangedButton != MouseButton.Left ||
+                e.OriginalSource is not DependencyObject source ||
+                FindAncestor<System.Windows.Controls.Primitives.ScrollBar>(source) != null) return;
 
-            var src = e.OriginalSource as DependencyObject;
-            while (src != null)
-            {
-                if (src is System.Windows.Controls.Button) return;
-                src = VisualTreeHelper.GetParent(src);
-            }
-
-            if (e.OriginalSource is FrameworkElement fe && fe.DataContext is TodoItem item)
+            if (ItemsControl.ContainerFromElement(TodoList, source) is System.Windows.Controls.ListViewItem { Content: TodoItem item })
             {
                 ShowEditDialog(item);
                 return;
             }
 
             ShowCreateTodoDialog();
+        }
+
+        private void TodoItem_RightButtonUp(object sender, MouseButtonEventArgs e)
+        {
+            if (_isDragging || sender is not System.Windows.Controls.ListViewItem { Content: TodoItem item }) return;
+            e.Handled = true;
+            ShowEditDialog(item);
         }
 
         public void HideInlineInput()
@@ -558,68 +316,10 @@ namespace PinToDesk
             SafeHide();
         }
 
-        /// <summary>
-        /// 快速唤出 / 隐藏待办清单窗口（供托盘双击与快捷键统一调用）：
-        /// 1. 若当前在视野中无遮挡（在顶层激活，或桌面无其他窗口遮挡待办） -> 直接收起隐藏；
-        /// 2. 若当前被隐藏或被其他应用窗口遮挡 -> 穿透前台锁，瞬间跃居屏幕最前方并获得焦点。
-        /// </summary>
         public void ToggleVisibility()
         {
-            var hwnd = new WindowInteropHelper(this).Handle;
-            bool isUncovered = false;
-
-            if (IsVisible && _isPassThrough)
-            {
-                // 穿透模式强制置顶且带 WS_EX_TRANSPARENT（WindowFromPoint 会穿透），必然位于视野最上层，直接一键隐藏
-                isUncovered = true;
-            }
-            else if (IsVisible && hwnd != IntPtr.Zero && NativeMethods.GetWindowRect(hwnd, out var rect))
-            {
-                // 直接从窗口真实物理矩形取中心点（兼容多显示器异构 DPI 缩放）
-                int centerX = (rect.Left + rect.Right) / 2;
-                int centerY = (rect.Top + rect.Bottom) / 2;
-
-                // 探测物理屏幕上覆盖在此坐标最上层的顶层窗口
-                IntPtr hitWnd = NativeMethods.WindowFromPoint(new NativeMethods.POINT { X = centerX, Y = centerY });
-                IntPtr hitRoot = hitWnd != IntPtr.Zero ? NativeMethods.GetAncestor(hitWnd, NativeMethods.GA_ROOT) : IntPtr.Zero;
-
-                isUncovered = (hitRoot == hwnd || NativeMethods.GetForegroundWindow() == hwnd);
-            }
-
-            if (isUncovered)
-            {
-                HideInlineInputAndWindow();
-            }
-            else
-            {
-                if (!IsVisible)
-                {
-                    Show();
-                }
-                if (WindowState == WindowState.Minimized)
-                {
-                    WindowState = WindowState.Normal;
-                }
-
-                if (hwnd != IntPtr.Zero)
-                {
-                    const uint flags = NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOMOVE | NativeMethods.SWP_SHOWWINDOW;
-                    if (_isPinned)
-                    {
-                        NativeMethods.SetWindowPos(hwnd, NativeMethods.HWND_TOPMOST, 0, 0, 0, 0, flags);
-                    }
-                    else
-                    {
-                        // 经典双阶段 Z 序提升：先 TOPMOST 再 NOTOPMOST，突破 Windows Z-Order 下沉粘滞
-                        NativeMethods.SetWindowPos(hwnd, NativeMethods.HWND_TOPMOST, 0, 0, 0, 0, flags);
-                        NativeMethods.SetWindowPos(hwnd, NativeMethods.HWND_NOTOPMOST, 0, 0, 0, 0, flags);
-                    }
-
-                    NativeMethods.ForceSetForegroundWindow(hwnd);
-                }
-
-                Activate();
-            }
+            if (IsVisible) HideInlineInputAndWindow();
+            else { Show(); PlaceOnDesktop(); }
         }
 
         private void UpdateEmptyPlaceholder()
@@ -631,19 +331,12 @@ namespace PinToDesk
         // ══════════════════════════════════════════════
         // 编辑 / 删除 / 恢复
         // ══════════════════════════════════════════════
-        private void EditBtn_Click(object sender, RoutedEventArgs e)
-        {
-            if (IsPreferencesWindowOpen) return;
+        public void AddTodoItem(string title) => AddTodoItem(title, TodoColor.None);
 
-            var id   = (Guid)((WinButton)sender).Tag;
-            var item = _items.FirstOrDefault(i => i.Id == id);
-            if (item != null) ShowEditDialog(item);
-        }
-
-        public void AddTodoItem(string title)
+        private void AddTodoItem(string title, TodoColor color)
         {
             if (string.IsNullOrWhiteSpace(title)) return;
-            _items.Add(new TodoItem { Title = title });
+            _items.Add(new TodoItem { Title = title, Color = color });
             _todoService.SaveTodos(_items);
             if (_items.Count > 0)
                 TodoList.ScrollIntoView(_items[^1]);
@@ -652,9 +345,16 @@ namespace PinToDesk
         /// <summary>
         /// 从回收站还原待办事项（保持原始 ID 和创建时间，防止同 ID 重复恢复）
         /// </summary>
-        public void RestoreTodoItem(TodoItem restoredItem)
+        public void RestoreTodoItem(TodoItem restoredItem, Guid groupId)
         {
             if (restoredItem == null || string.IsNullOrWhiteSpace(restoredItem.Title)) return;
+            var target = _groups.Tabs.FirstOrDefault(g => g.Id == groupId);
+            if (target != null)
+            {
+                GroupTabs.SelectedItem = target;
+                if (_currentGroup != target) throw new System.IO.IOException("无法打开原标签，未还原待办。");
+            }
+            if (_todoService.HasReadFault) throw new System.IO.IOException("标签数据无法读取，未还原待办。");
             if (_items.Any(x => x.Id == restoredItem.Id)) return;
             _items.Add(restoredItem);
             _todoService.SaveTodos(_items);
@@ -666,7 +366,12 @@ namespace PinToDesk
         public void DeleteTodoItem(TodoItem item)
         {
             if (item == null) return;
-            _recycleBinService.AddToRecycleBin(item);
+            try { _recycleBinService.AddRange(new[] { item }, _currentGroup.Id); }
+            catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException)
+            {
+                System.Windows.MessageBox.Show(this, ex.Message, "未能移入待办历史");
+                return;
+            }
             _items.Remove(item);
             _todoService.SaveTodos(_items);
             _todoService.Flush();
@@ -677,21 +382,21 @@ namespace PinToDesk
             if (IsPreferencesWindowOpen) return;
 
             DiagnosticLogger.RecordStep("Todo", "打开编辑待办弹窗");
-            var dlg = new EditDialog("编辑待办", item.Title) { Owner = this };
+            var dlg = new EditDialog(item) { Owner = this };
+            dlg.ColorPreviewChanged += color => item.PreviewColor = color;
             ActiveEditDialog = dlg;
             try
             {
                 if (dlg.ShowDialog() == true)
                 {
-                    if (string.IsNullOrWhiteSpace(dlg.ResultText))
+                    if (dlg.DeleteRequested || string.IsNullOrWhiteSpace(dlg.ResultText))
                     {
-                        // 空值即删除
                         DeleteTodoItem(item);
-                        DiagnosticLogger.RecordStep("Todo", "编辑待办置空自动删除");
                     }
                     else
                     {
                         item.Title = dlg.ResultText;
+                        item.Color = dlg.SelectedColor;
                         _todoService.SaveTodos(_items);
                         DiagnosticLogger.RecordStep("Todo", $"编辑待办保存完成 (Len={dlg.ResultText.Length})");
                     }
@@ -699,17 +404,8 @@ namespace PinToDesk
             }
             finally
             {
+                item.PreviewColor = null;
                 ActiveEditDialog = null;
-            }
-        }
-
-        private void DeleteBtn_Click(object sender, RoutedEventArgs e)
-        {
-            var id   = (Guid)((WinButton)sender).Tag;
-            var item = _items.FirstOrDefault(i => i.Id == id);
-            if (item != null)
-            {
-                DeleteTodoItem(item);
             }
         }
 
@@ -1084,21 +780,6 @@ namespace PinToDesk
             container.BeginAnimation(UIElement.OpacityProperty, fade);
         }
 
-        private void LoadSettings()
-        {
-            var settings = _settingsManager.Settings;
-            SetPinned(settings.TodoIsPinned);
-            ApplyPassThroughState(settings.TodoIsPassThrough);
-        }
-
-        private void SaveSettings()
-        {
-            var settings = _settingsManager.Settings;
-            settings.TodoIsPinned = _isPinned;
-            settings.TodoIsPassThrough = _isPassThrough;
-            _settingsManager.SaveSettings(settings);
-        }
-
         // ══════════════════════════════════════════════
         // 窗口大小与位置记忆 / 恢复 / 越界保护
         // ══════════════════════════════════════════════
@@ -1178,8 +859,8 @@ namespace PinToDesk
         public void ResetToDefaultPosition(bool save = true)
         {
             var area = SystemParameters.WorkArea;
-            Width  = 280;
-            Height = Width * 1.3;
+            Width  = MinWidth;
+            Height = MinHeight;
             Left   = area.Right - Width - 20;
             Top    = area.Top + 20;
 
@@ -1211,7 +892,7 @@ namespace PinToDesk
         /// </summary>
         public void FlushAndDispose()
         {
-            _todoService.Dispose();
+            _groups.Dispose();
             _recycleBinService.Dispose();
         }
 

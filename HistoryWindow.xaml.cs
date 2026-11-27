@@ -93,11 +93,17 @@ namespace PinToDesk
                 var restoredTodo = new TodoItem
                 {
                     Id = item.Id,
+                    Color = item.Color,
                     Title = item.Title,
                     CreatedAt = item.CreatedAt
                 };
 
-                _todoWindow.RestoreTodoItem(restoredTodo);
+                try { _todoWindow.RestoreTodoItem(restoredTodo, item.GroupId); }
+                catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException)
+                {
+                    System.Windows.MessageBox.Show(this, ex.Message, "未能还原待办");
+                    return;
+                }
                 _items.Remove(item);
                 _recycleBinService.SaveItems(_items);
             }

@@ -14,11 +14,9 @@ namespace PinToDesk
         private static Mutex? _singleInstanceMutex;
 
         private SettingsManager?     _settingsManager;
-        private KeyboardHookService? _keyboardHookService;
         private TrayHelper?          _trayHelper;
         private MainWindow?          _todoWindow;
 
-        public KeyboardHookService? KeyboardHookService => _keyboardHookService;
 
         protected override void OnStartup(StartupEventArgs e)
         {
@@ -66,45 +64,13 @@ namespace PinToDesk
             _trayHelper = new TrayHelper(this, _settingsManager, _todoWindow);
             _todoWindow.SetTray(_trayHelper);
 
-            // 3. 开启低级键盘钩子，注册全局快捷键并监听偏好设置热重载
-            _keyboardHookService = new KeyboardHookService();
-            RegisterAllHotkeys();
-            _trayHelper.SubscribeHotkeysChanged(ReloadHotkeys);
-
-            // 4. 默认展现待办主窗口
             _todoWindow.Show();
-            _todoWindow.Activate();
 
             // 5. 在主消息泵进入空闲态后，二次确保托盘图标稳定显现
             Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, () =>
             {
                 _trayHelper?.EnsureVisibleWithRetry();
             });
-        }
-
-        // ══════════════════════════════════════════════
-        // 注册 / 热重载全局快捷键
-        // ══════════════════════════════════════════════
-        private void RegisterAllHotkeys()
-        {
-            if (_keyboardHookService == null || _settingsManager == null) return;
-
-            _keyboardHookService.UnregisterAll();
-            var settings = _settingsManager.Settings;
-
-            // 唤出 / 隐藏待办清单（默认 Ctrl+D）
-            _keyboardHookService.RegisterHotkey(settings.HotkeyTodoTopToggle, () =>
-            {
-                Dispatcher.BeginInvoke(() =>
-                {
-                    _todoWindow?.ToggleVisibility();
-                });
-            });
-        }
-
-        private void ReloadHotkeys()
-        {
-            Dispatcher.BeginInvoke(RegisterAllHotkeys);
         }
 
         protected override void OnExit(ExitEventArgs e)
@@ -120,7 +86,6 @@ namespace PinToDesk
             }
 
             ThemeManager.Dispose();
-            _keyboardHookService?.Dispose();
             _trayHelper?.Dispose();
             _todoWindow?.FlushAndDispose();
             DiagnosticLogger.Shutdown("OnExit");

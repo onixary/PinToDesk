@@ -104,7 +104,7 @@ trigger: always_on
 ## 五、代码质量门禁
 
 1. **零警告、零错误**
-   - `dotnet build PinToDesk.csproj -c Release` 必须达到 **0 警告、0 错误**。
+   - `dotnet build PinToDesk_edit.csproj -c Release` 必须达到 **0 警告、0 错误**。
    - 严禁忽略编译器警告；严禁遗漏关键依赖/文件导致 CI 编译失败。
 
 2. **提交前跟踪校验**

@@ -44,7 +44,6 @@ namespace PinToDesk.Common
         private AboutWindow? _aboutWindow;
         private HistoryWindow? _historyWindow;
         private PreferencesWindow? _preferencesWindow;
-        private Action? _hotkeysChangedHandler;
 
         // 纯文字极简菜单项
         private readonly MenuItem _itemHistory;
@@ -119,7 +118,7 @@ namespace PinToDesk.Common
             _icon = new SWF.NotifyIcon
             {
                 Icon = _trayIcon,
-                Text = $"PinToDesk v{version}",
+                Text = $"PinToDesk_edit v{version}",
                 Visible = true
             };
 
@@ -163,11 +162,6 @@ namespace PinToDesk.Common
             };
         }
 
-        public void SubscribeHotkeysChanged(Action handler)
-        {
-            _hotkeysChangedHandler += handler;
-        }
-
         public void ShowPreferencesWindow()
         {
             _todoWindow.Dispatcher.Invoke(() =>
@@ -178,10 +172,6 @@ namespace PinToDesk.Common
                 if (_preferencesWindow == null)
                 {
                     _preferencesWindow = new PreferencesWindow(_settingsManager);
-                    if (_hotkeysChangedHandler != null)
-                    {
-                        _preferencesWindow.HotkeysChanged += _hotkeysChangedHandler;
-                    }
                     _preferencesWindow.ResetTodoBoundsRequested += () =>
                     {
                         _todoWindow.ResetToDefaultPosition(true);
@@ -189,7 +179,6 @@ namespace PinToDesk.Common
                         {
                             _todoWindow.Show();
                         }
-                        _todoWindow.Activate();
                     };
                     _preferencesWindow.Closed += (s, e) =>
                     {

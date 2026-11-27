@@ -15,10 +15,16 @@ namespace PinToDesk.Services
     {
         private readonly JsonLinesStorage<TodoItem> _storage;
 
-        public TodoService()
+        public bool HasReadFault => _storage.HasReadFault;
+        internal static string FileFor(Guid groupId) => groupId == Guid.Empty
+            ? AppPaths.Todos : Path.Combine(AppPaths.AppData, $"todos-{groupId:N}.jsonl");
+
+        public TodoService() : this(Guid.Empty) { }
+
+        internal TodoService(Guid groupId)
         {
-            _storage = new JsonLinesStorage<TodoItem>(AppPaths.Todos);
-            TryMigrateLegacyMarkdownTodos();
+            _storage = new JsonLinesStorage<TodoItem>(FileFor(groupId));
+            if (groupId == Guid.Empty) TryMigrateLegacyMarkdownTodos();
         }
 
         /// <summary>

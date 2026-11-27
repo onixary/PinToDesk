@@ -10,6 +10,22 @@ namespace PinToDesk.Models
 
         public Guid Id { get; set; } = Guid.NewGuid();
 
+        private TodoColor _color;
+        private TodoColor? _previewColor;
+        public TodoColor Color
+        {
+            get => _color;
+            set { _color = value; OnPropertyChanged(nameof(DisplayColor)); }
+        }
+
+        internal TodoColor? PreviewColor
+        {
+            set { _previewColor = value; OnPropertyChanged(nameof(DisplayColor)); }
+        }
+
+        [System.Text.Json.Serialization.JsonIgnore]
+        public TodoColor DisplayColor => _previewColor ?? Color;
+
         public string Title
         {
             get => _title;

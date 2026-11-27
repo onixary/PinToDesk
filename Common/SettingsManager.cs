@@ -29,15 +29,6 @@ namespace PinToDesk.Common
             WriteIndented = false // 单行 JSON
         };
 
-        /// <summary>
-        /// 兼容 PinToDesk v1.0.x 旧版 settings.json 字段映射结构
-        /// </summary>
-        private sealed class LegacySettingsDto
-        {
-            public bool? IsPinned { get; set; }
-            public bool? IsPassThrough { get; set; }
-        }
-
         public AppSettings Settings => _settings;
 
         public event EventHandler<AppSettings>? SettingsChanged;
@@ -169,23 +160,8 @@ namespace PinToDesk.Common
             {
                 var oldContent = File.ReadAllText(jsonPath, Encoding.UTF8);
                 var parsed = JsonSerializer.Deserialize<AppSettings>(oldContent, JsonOptions);
-                var legacy = JsonSerializer.Deserialize<LegacySettingsDto>(oldContent, JsonOptions);
-
-                if (parsed == null && legacy == null) return false;
-
-                result = parsed ?? new AppSettings();
-                // 若旧版仅包含 IsPinned / IsPassThrough 字段，则映射至新字段并遵循“穿透必置顶”
-                if (legacy != null)
-                {
-                    if (legacy.IsPinned.HasValue && !result.TodoIsPinned)
-                        result.TodoIsPinned = legacy.IsPinned.Value;
-                    if (legacy.IsPassThrough.HasValue && !result.TodoIsPassThrough)
-                        result.TodoIsPassThrough = legacy.IsPassThrough.Value;
-                }
-                if (result.TodoIsPassThrough)
-                {
-                    result.TodoIsPinned = true;
-                }
+                if (parsed == null) return false;
+                result = parsed;
                 return true;
             }
             catch (Exception ex)
@@ -205,7 +181,7 @@ namespace PinToDesk.Common
             {
                 System.Windows.MessageBox.Show(
                     $"配置文件 ({fileName}) 读取遇到异常（{reason}），已开启保护模式：本次会话使用默认配置且不会覆写磁盘文件，请检查文件并适时重启软件。",
-                    "PinToDesk 配置保护",
+                    "PinToDesk_edit 配置保护",
                     System.Windows.MessageBoxButton.OK,
                     System.Windows.MessageBoxImage.Warning);
             }));

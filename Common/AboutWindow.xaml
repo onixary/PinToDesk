@@ -1,7 +1,7 @@
 <Window x:Class="PinToDesk.Common.AboutWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="关于 PinToDesk" Width="290" Height="175"
+        Title="关于 PinToDesk_edit" Width="324" SizeToContent="Height" ResizeMode="NoResize"
         WindowStyle="None"
         AllowsTransparency="True"
         Background="Transparent"
@@ -10,6 +10,12 @@
         WindowStartupLocation="CenterScreen"
         PreviewKeyDown="Window_PreviewKeyDown">
 
+    <Window.Resources>
+        <Style TargetType="Hyperlink">
+            <Setter Property="Foreground" Value="{DynamicResource ThemeTabAccentBrush}"/>
+            <Setter Property="ToolTip" Value="{Binding NavigateUri, RelativeSource={RelativeSource Self}}"/>
+        </Style>
+    </Window.Resources>
     <Border Style="{StaticResource FluentWindowBorder}"
             MouseLeftButtonDown="Window_MouseLeftButtonDown">
         <Grid Margin="20,18,20,12">
@@ -20,47 +26,41 @@
             </Grid.RowDefinitions>
 
             <!-- 应用名 & 版本 -->
-            <StackPanel Grid.Row="0" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,10">
-                <TextBlock Text="PinToDesk" FontSize="18" FontWeight="Bold" Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
-                <TextBlock x:Name="VersionText" Text="" FontSize="12" Foreground="{DynamicResource ThemeTextSecondaryBrush}" Margin="6,0,0,2" VerticalAlignment="Bottom"/>
-            </StackPanel>
+            <DockPanel Grid.Row="0" Margin="0,0,0,12">
+                <TextBlock x:Name="VersionText" DockPanel.Dock="Right" FontSize="12" Foreground="{DynamicResource ThemeTextSecondaryBrush}" VerticalAlignment="Center"/>
+                <TextBlock Text="PinToDesk_edit" FontSize="21" FontWeight="SemiBold" Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
+            </DockPanel>
 
             <!-- 信息表格 -->
-            <Grid Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center">
+            <Grid Grid.Row="1" VerticalAlignment="Center">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="8"/>
+                    <ColumnDefinition Width="16"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="6"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="6"/>
-                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="23"/>
+                    <RowDefinition Height="23"/>
+                    <RowDefinition Height="13"/>
+                    <RowDefinition Height="23"/>
+                    <RowDefinition Height="23"/>
                 </Grid.RowDefinitions>
 
-                <TextBlock Grid.Row="0" Grid.Column="0" Text="作者:" Foreground="{DynamicResource ThemeTextSecondaryBrush}" FontSize="12" HorizontalAlignment="Right"/>
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="原作者：" Foreground="{DynamicResource ThemeTextSecondaryBrush}" FontSize="12"/>
                 <TextBlock Grid.Row="0" Grid.Column="2" Text="li5bo5" Foreground="{DynamicResource ThemeTextPrimaryBrush}" FontSize="12" FontWeight="SemiBold"/>
 
-                <TextBlock Grid.Row="2" Grid.Column="0" Text="项目地址:" Foreground="{DynamicResource ThemeTextSecondaryBrush}" FontSize="12" HorizontalAlignment="Right"/>
-                <TextBlock Grid.Row="2" Grid.Column="2" x:Name="LinkText"
-                           Text="github.com/li5bo5/PinToDesk"
-                           Foreground="#2A75D3"
-                           FontSize="12"
-                           Cursor="Hand"
-                           TextDecorations="Underline"
-                           MouseEnter="LinkText_MouseEnter"
-                           MouseLeave="LinkText_MouseLeave"
-                           MouseLeftButtonDown="LinkText_MouseLeftButtonDown"/>
-
-                <TextBlock Grid.Row="4" Grid.Column="0" Text="开源协议:" Foreground="{DynamicResource ThemeTextSecondaryBrush}" FontSize="12" HorizontalAlignment="Right"/>
-                <TextBlock Grid.Row="4" Grid.Column="2" Text="AGPL-3.0" Foreground="{DynamicResource ThemeTextPrimaryBrush}" FontSize="12" FontWeight="SemiBold"/>
+                <TextBlock Grid.Row="1" Text="修改优化：" Foreground="{DynamicResource ThemeTextSecondaryBrush}" FontSize="12"/>
+                <TextBlock Grid.Row="1" Grid.Column="2" Text="onixary" Foreground="{DynamicResource ThemeTextPrimaryBrush}" FontSize="12" FontWeight="SemiBold"/>
+                <Border Grid.Row="2" Grid.ColumnSpan="3" Height="1" Margin="0,0,0,8" Background="{DynamicResource ThemeSeparatorBrush}"/>
+                <TextBlock Grid.Row="3" Text="原项目地址" Foreground="{DynamicResource ThemeTextSecondaryBrush}" FontSize="12"/>
+                <TextBlock Grid.Row="3" Grid.Column="2"><Hyperlink x:Name="OriginalRepository" NavigateUri="https://github.com/li5bo5/PinToDesk" RequestNavigate="OpenRepository">li5bo5/PinToDesk</Hyperlink></TextBlock>
+                <TextBlock Grid.Row="4" Text="改版项目地址" Foreground="{DynamicResource ThemeTextSecondaryBrush}" FontSize="12"/>
+                <TextBlock Grid.Row="4" Grid.Column="2"><Hyperlink x:Name="EditedRepository" NavigateUri="https://github.com/onixary/PinToDesk" RequestNavigate="OpenRepository">onixary/PinToDesk</Hyperlink></TextBlock>
             </Grid>
 
             <!-- 底部：版权与提示 -->
             <StackPanel Grid.Row="2" HorizontalAlignment="Center">
-                <TextBlock Text="© 2026 li5bo5. All Rights Reserved."
+                <TextBlock Text="© 2026 li5bo5. All Rights Reserved.  ·  AGPL-3.0"
                            HorizontalAlignment="Center"
                            FontSize="10"
                            Foreground="{DynamicResource ThemeTextTertiaryBrush}"/>

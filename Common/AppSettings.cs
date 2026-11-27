@@ -8,8 +8,8 @@ namespace PinToDesk.Common
     public class AppSettings
     {
         // ── TodoList 待办设置 ──────────────────────────
-        public bool TodoIsPinned { get; set; } = false;
-        public bool TodoIsPassThrough { get; set; } = false;
+
+        public Guid SelectedGroupId { get; set; }
 
         /// <summary>待办事项展开显示（true: 完全展开自动换行; false: 默认3行折叠）</summary>
         public bool TodoExpandedDisplay { get; set; } = false;
@@ -39,8 +39,5 @@ namespace PinToDesk.Common
         /// <summary>窗口不透明度（40 ~ 100）</summary>
         public int WindowOpacity { get; set; } = 100;
 
-        // ── 自定义快捷键设置 ────────────────────────────
-        /// <summary>唤出 / 隐藏待办清单窗口（默认 Ctrl+D）</summary>
-        public string HotkeyTodoTopToggle { get; set; } = "Ctrl+D";
     }
 }

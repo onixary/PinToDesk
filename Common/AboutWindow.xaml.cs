@@ -4,7 +4,8 @@ using System.Reflection;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
-using System.Windows.Media;
+using System.Windows.Documents;
+using System.Windows.Navigation;
 
 namespace PinToDesk.Common
 {
@@ -47,6 +48,7 @@ namespace PinToDesk.Common
 
         private void Window_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
+            if (e.OriginalSource is Hyperlink or FrameworkContentElement { Parent: Hyperlink }) return;
             if (e.LeftButton == MouseButtonState.Pressed) NativeMethods.DragMoveWithBounds(this);
         }
 
@@ -59,27 +61,18 @@ namespace PinToDesk.Common
             }
         }
 
-        private void LinkText_MouseEnter(object sender, System.Windows.Input.MouseEventArgs e)
+        private void OpenRepository(object sender, RequestNavigateEventArgs e)
         {
-            LinkText.Foreground = System.Windows.Media.Brushes.DodgerBlue;
-        }
-
-        private void LinkText_MouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
-        {
-            LinkText.Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(0x2A, 0x75, 0xD3));
-        }
-
-        private void LinkText_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-        {
+            if (sender != OriginalRepository && sender != EditedRepository) return;
+            e.Handled = true;
             try
             {
                 var psi = new ProcessStartInfo
                 {
-                    FileName = "https://github.com/li5bo5/PinToDesk",
+                    FileName = ((Hyperlink)sender).NavigateUri.AbsoluteUri,
                     UseShellExecute = true
                 };
                 Process.Start(psi);
-                e.Handled = true;
             }
             catch (Exception ex)
             {

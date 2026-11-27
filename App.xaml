@@ -30,7 +30,7 @@
         <SolidColorBrush x:Key="ThemeButtonHoverBrush" Color="#14000000"/>
         <SolidColorBrush x:Key="ThemeButtonPressedBrush" Color="#24000000"/>
         <SolidColorBrush x:Key="ThemeScrollBarThumbBrush" Color="#4D000000"/>
-        <SolidColorBrush x:Key="ThemeTopmostAccentLineBrush" Color="#2A75D3"/>
+        <SolidColorBrush x:Key="ThemeTabAccentBrush" Color="#2A75D3"/>
 
         <!-- ══════════════════════════════════════════════
              待办事项文本样式（支持折叠/展开显示动态切换）
@@ -280,7 +280,7 @@
         </Style>
 
         <!-- ══════════════════════════════════════════════
-             标题栏按钮（新建/置顶/穿透/关闭）
+             标题栏按钮（新建/隐藏）
         ══════════════════════════════════════════════ -->
         <Style x:Key="TitleBarBtn" TargetType="Button">
             <Setter Property="Focusable" Value="False"/>
@@ -419,9 +419,9 @@
         </Style>
 
         <!-- ══════════════════════════════════════════════
-             偏好设置中心快捷键专属输入框（单行，固定26px高度）
+             标签就地重命名输入框
         ══════════════════════════════════════════════ -->
-        <Style x:Key="HotkeyInputBox" TargetType="TextBox">
+        <Style x:Key="TabNameInput" TargetType="TextBox">
             <Setter Property="Height" Value="26"/>
             <Setter Property="Background" Value="{DynamicResource ThemeInputBackgroundBrush}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource ThemeInputBorderBrush}"/>
